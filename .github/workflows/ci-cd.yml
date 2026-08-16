@@ -127,7 +127,17 @@ jobs:
         run: dotnet list ShoppingList.sln package --deprecated
 
       - name: Scan filesystem with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        # Pinned to 0.35.0 deliberately. In March 2026 this action was compromised: 76 of its 77
+        # version tags were force-pushed to malicious commits that exfiltrated workflow secrets
+        # (CVE-2026-33634). Aqua's remediation removed or repointed those tags, so any pin below
+        # 0.35.0 no longer resolves — which is why an earlier 0.28.0 pin failed to start here
+        # rather than quietly running something else. 0.35.0 is the one tag the vendor identifies
+        # as never having been touched.
+        #
+        # Tag pinning is not sufficient against tag poisoning, because a tag is a mutable
+        # pointer. Substituting this tag's full commit SHA is the stronger form, and is what the
+        # vendor advisory recommends.
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
@@ -214,7 +224,8 @@ jobs:
         # Trivy to resolve. Dependency vulnerabilities are still covered on pull requests by the
         # filesystem scan in the security-scan job.
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@0.28.0
+        # Same pin, same reason as the filesystem scan in the security-scan job.
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           # Read from the metadata output rather than rebuilt by hand: on a pull_request event
           # the sha tag is the PR head rather than github.sha, so a hand-built reference would
