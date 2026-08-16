@@ -241,6 +241,16 @@ jobs:
     timeout-minutes: 20
     needs: [build-image]
     if: github.ref == 'refs/heads/main'
+
+    # id-token: write is what lets the runner mint a short-lived OIDC token for azure/login.
+    # Without it the login step cannot even request a token, and the job fails on a missing
+    # environment variable rather than on the credentials — which misreports the cause. The
+    # deploy is expected to fail here for want of real cloud resources; it should fail at
+    # authentication, not before reaching it.
+    permissions:
+      contents: read
+      id-token: write
+
     environment:
       name: production
       url: ${{ vars.APP_URL }}
