@@ -1,0 +1,47 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      Nullable reference types on, and warnings treated as errors. A nullability warning is
+      a latent NullReferenceException; letting the build stay green with dozens of them is
+      how they accumulate. This costs a little friction up front and removes an entire
+      class of runtime failure.
+    -->
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- Deterministic, reproducible builds -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <Authors>Shopping List</Authors>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    Test projects get a narrower rule set. Assertion-heavy test code trips analyzer rules
+    that are appropriate for production code and noise in tests; suppressing them here beats
+    scattering #pragma directives through the suite.
+  -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
+    <NoWarn>$(NoWarn);CA1707;CA2007;S101;S2699;S6966</NoWarn>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

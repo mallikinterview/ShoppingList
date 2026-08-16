@@ -1,0 +1,60 @@
+# Single-binary Loki with filesystem storage — appropriate for a local stack, and
+# deliberately not a production topology (no object storage backend, no replication).
+#
+# The API ships logs directly via the Serilog Loki sink rather than through Promtail
+# scraping container stdout. That keeps structured properties intact as queryable fields
+# instead of forcing Loki to re-parse them out of a text line.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  metric_aggregation_enabled: true
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  # Label cardinality is the thing that kills Loki. Labels here are app, env, level and
+  # ranking variant only; user ids, item ids and correlation ids stay in the log payload
+  # where they are still queryable but do not multiply streams.
+  max_label_names_per_series: 15
+  volume_enabled: true
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 168h
+
+analytics:
+  reporting_enabled: false

@@ -1,0 +1,65 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────────────
+# .env holds real values; .env.example is the committed template. Requirement: no secrets
+# in configuration files under source control.
+.env
+.env.local
+*.env
+!.env.example
+secrets.json
+appsettings.*.local.json
+*.pfx
+*.key
+*.pem
+
+# ── .NET build output ────────────────────────────────────────────────────────────────
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+project.lock.json
+project.fragment.lock.json
+
+# ── Test output ──────────────────────────────────────────────────────────────────────
+[Tt]est[Rr]esult*/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+BenchmarkDotNet.Artifacts/
+
+# ── IDE ──────────────────────────────────────────────────────────────────────────────
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Local container data ─────────────────────────────────────────────────────────────
+# Named volumes live inside Docker, but a bind-mount left behind by an experiment should
+# never end up committed.
+docker/**/data/
+.docker-data/
+
+# Editor and tooling backups. A stray *.bak of a source file is a second copy of the
+# code that no build references and no reviewer expects to find.
+*.bak

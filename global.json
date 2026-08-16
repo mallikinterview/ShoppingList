@@ -1,0 +1,8 @@
+{
+  "$comment": "Pins the SDK feature band so this repository builds identically on a developer machine, on a CI runner, and inside the SDK container image. The version is the MINIMUM required band, not the exact build: rollForward 'latestFeature' accepts any 10.0.x at or above 10.0.100. Pinning an exact high band (10.0.400) would break every environment sitting on a lower one, which is a self-inflicted CI failure with no upside.",
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestFeature",
+    "allowPrerelease": false
+  }
+}

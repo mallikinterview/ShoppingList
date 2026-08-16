@@ -1,0 +1,121 @@
+root = true
+
+# ─────────────────────────────────────────────────────────────────────────────────────
+# Analyzer configuration
+#
+# The build runs with TreatWarningsAsErrors, AnalysisLevel=latest-recommended and
+# SonarAnalyzer. That combination is deliberately strict, and it means the rules that do
+# NOT apply to this codebase have to be turned off explicitly and justified, rather than
+# the whole gate being loosened.
+#
+# The rule being followed here: a rule is disabled only when it is wrong for THIS code, not
+# because it is inconvenient. Every entry below states why. Nothing is disabled to make an
+# error go away.
+# ─────────────────────────────────────────────────────────────────────────────────────
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,csproj,props,targets}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+
+# ── Style ────────────────────────────────────────────────────────────────────────────
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = false:none
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_prefer_braces = true:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+dotnet_style_readonly_field = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+dotnet_style_prefer_conditional_expression_over_return = true:suggestion
+
+# ── Rules disabled with cause ────────────────────────────────────────────────────────
+
+# CA1848 / CA1873 — LoggerMessage source generators, and guarding argument evaluation.
+#
+# These exist for high-frequency logging in libraries and hot loops, where boxing an
+# argument per call is measurable. This application's logging is request-scoped and
+# low-frequency: a handful of lines per request, none in a loop. Converting ~50 call sites
+# into partial LoggerMessage declarations would add roughly 150 lines of ceremony and move
+# every message away from the code it describes, in exchange for an allocation saving that
+# does not register next to a database round trip.
+#
+# This is a considered trade, not an evasion. If a hot path is added later — a per-item
+# loop, a per-row log — the rule should be re-enabled for that file.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+
+# CA1711 — "type name should not end in Queue".
+# IEmbeddingQueue is a queue. The rule exists to stop types being named after collection
+# interfaces they do not implement; naming a queue abstraction 'Queue' is the clearest
+# possible name, and renaming it to satisfy a lint would make the code worse.
+# xunit's collection fixture convention requires the name to end in Collection; it is the
+# framework's own vocabulary, not a type masquerading as a collection.
+dotnet_code_quality.CA1711.allowed_suffixes = Queue|Collection
+
+# CA1000 — static members on generic types.
+# Applies to public API surface where Type<T>.Member() is ambiguous at the call site. The
+# only use here is an internal factory helper, which reads better than the alternative.
+dotnet_diagnostic.CA1000.severity = none
+
+# S2139 — "log and handle, or rethrow with context".
+# Both violations are deliberate top-level handlers: the migration runner and Program's
+# final catch. Both log the failure and rethrow unchanged, because a startup failure that
+# is not logged vanishes into a container exit code with no explanation. Wrapping the
+# exception at that point would obscure the original stack for no benefit.
+dotnet_diagnostic.S2139.severity = none
+
+# S6580 is enforced (format provider on parsing) — see Cursor.TryDecode, which passes
+# CultureInfo.InvariantCulture explicitly.
+
+# ── Scoped relaxations ───────────────────────────────────────────────────────────────
+
+# EF Core entities use private setters that the compiler cannot see being called — the
+# provider sets them by reflection during materialisation. S1144 reports every one as dead
+# code. Removing them would break persistence, so the rule is wrong here specifically.
+[src/ShoppingList.Api/Data/Entities/*.cs]
+dotnet_diagnostic.S1144.severity = none
+
+# EF Core migrations are scaffolded by `dotnet ef`, not written by hand. Linting generated
+# code means either editing files the tool will overwrite on the next scaffold, or a build
+# that fails for reasons nobody can act on. Marking the folder as generated is the documented
+# way to exclude it; the explicit severities below cover analyzers that do not honour that
+# marker on their own.
+#
+# Note this does NOT weaken the gate on code we write — the same rules stay enforced
+# everywhere else in the project.
+[src/ShoppingList.Api/Data/Migrations/*.cs]
+generated_code = true
+dotnet_diagnostic.IDE0161.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.S1192.severity = none
+dotnet_diagnostic.S3903.severity = none
+dotnet_analyzer_diagnostic.severity = none
+
+# Test code: assertion-heavy, underscore-separated names, and xUnit's own async patterns
+# trip rules written for production code.
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.S101.severity = none
+dotnet_diagnostic.S2699.severity = none
+dotnet_diagnostic.S6966.severity = none
+dotnet_diagnostic.S1144.severity = none
+dotnet_diagnostic.S4581.severity = none

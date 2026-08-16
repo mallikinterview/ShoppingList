@@ -1,0 +1,44 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35222.181
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ShoppingList.Api", "src\ShoppingList.Api\ShoppingList.Api.csproj", "{4A1B2C3D-1111-4E5F-9A0B-100000000001}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ShoppingList.Tests.Unit", "tests\ShoppingList.Tests.Unit\ShoppingList.Tests.Unit.csproj", "{4A1B2C3D-2222-4E5F-9A0B-100000000002}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ShoppingList.Tests.Integration", "tests\ShoppingList.Tests.Integration\ShoppingList.Tests.Integration.csproj", "{4A1B2C3D-3333-4E5F-9A0B-100000000003}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution", "solution", "{4A1B2C3D-4444-4E5F-9A0B-100000000004}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+		Directory.Packages.props = Directory.Packages.props
+		global.json = global.json
+		docker-compose.yml = docker-compose.yml
+		Dockerfile = Dockerfile
+		README.md = README.md
+		.env.example = .env.example
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4A1B2C3D-1111-4E5F-9A0B-100000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A1B2C3D-1111-4E5F-9A0B-100000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A1B2C3D-1111-4E5F-9A0B-100000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A1B2C3D-1111-4E5F-9A0B-100000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A1B2C3D-2222-4E5F-9A0B-100000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A1B2C3D-2222-4E5F-9A0B-100000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A1B2C3D-2222-4E5F-9A0B-100000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A1B2C3D-2222-4E5F-9A0B-100000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A1B2C3D-3333-4E5F-9A0B-100000000003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A1B2C3D-3333-4E5F-9A0B-100000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A1B2C3D-3333-4E5F-9A0B-100000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A1B2C3D-3333-4E5F-9A0B-100000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

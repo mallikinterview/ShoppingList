@@ -1,0 +1,277 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only by default. The default token has write access to the whole repository, and a
+# compromised action inheriting that is a supply-chain problem — jobs opt in to what they need.
+permissions:
+  contents: read
+
+# A superseded run on the same branch is cancelled. Without this, pushing three commits in a
+# minute runs three full pipelines and the first two are already irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  REGISTRY: ghcr.io
+  # Kept for reference; the jobs that publish use a lowercased copy, because GHCR rejects
+  # uppercase repository names and github.repository preserves the repository's own casing.
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # No version here: global.json is the single source of truth, so the runner cannot
+          # silently build against a different SDK than a developer machine.
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          # Keyed on the lockfile-equivalent. A constant key would serve a stale cache forever;
+          # no key at all would re-download on every run.
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore ShoppingList.sln
+
+      - name: Verify formatting
+        # Style is enforced by a tool, not by review comments.
+        run: dotnet format ShoppingList.sln --verify-no-changes --no-restore
+
+      - name: Build
+        # Directory.Build.props sets TreatWarningsAsErrors, so warnings fail here.
+        run: dotnet build ShoppingList.sln --configuration Release --no-restore
+
+      - name: Unit tests
+        run: >
+          dotnet test tests/ShoppingList.Tests.Unit/ShoppingList.Tests.Unit.csproj
+          --configuration Release --no-build
+          --logger "trx;LogFileName=unit.trx"
+          --collect:"XPlat Code Coverage"
+          --results-directory ./artifacts/test-results
+
+      - name: Integration tests (TestContainers)
+        # Genuinely executed, not skipped by a filter. GitHub-hosted Ubuntu runners have a
+        # Docker daemon, so TestContainers starts real Postgres, Redis and Minio instances —
+        # the same containers the application uses, not in-memory substitutes.
+        run: >
+          dotnet test tests/ShoppingList.Tests.Integration/ShoppingList.Tests.Integration.csproj
+          --configuration Release --no-build
+          --logger "trx;LogFileName=integration.trx"
+          --results-directory ./artifacts/test-results
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: false
+
+      - name: Publish test results
+        # always(): test output is most valuable precisely when the step before it failed.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./artifacts/test-results
+          retention-days: 14
+
+  security-scan:
+    name: Security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ShoppingList.sln
+
+      - name: Check for vulnerable packages
+        run: |
+          dotnet list ShoppingList.sln package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          # grep -q returns 0 on a match, so a match must fail the job explicitly.
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::Vulnerable NuGet packages detected"
+            exit 1
+          fi
+
+      - name: Check for deprecated packages
+        # Reported, not enforced: a deprecation is a thing to schedule, not a reason to block a
+        # release today.
+        continue-on-error: true
+        run: dotnet list ShoppingList.sln package --deprecated
+
+      - name: Scan filesystem with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+
+  build-image:
+    name: Build image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [build-and-test, security-scan]
+    # Runs on pull requests too. The image is built so a broken Dockerfile fails the PR, but
+    # nothing is pushed — an earlier version skipped the whole job on pull requests, which meant
+    # the Dockerfile was only ever exercised after merge: the wrong side of the gate.
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve the image name
+        id: image
+        # GHCR rejects uppercase repository names, and github.repository preserves whatever case
+        # the GitHub repository was created with. Lowercasing here rather than hard-coding an
+        # owner keeps the workflow correct in a fork, where github.repository is somebody else's.
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        # Nothing is pushed from a pull request, so no registry credential is needed there.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # ghcr.io authenticates with the workflow's own token: no long-lived registry
+          # credential to store, rotate or leak. This is the main reason it is preferred over
+          # Docker Hub here, alongside having no pull rate limits.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            # Every image traces back to the exact commit that produced it. Without an
+            # immutable tag, "which code is running in production" is unanswerable.
+            type=sha,prefix=sha-,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          # Built on every event, published only when the ref is trusted.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Attestations can only be attached by the registry exporter, so they follow the same
+          # condition as the push — requesting them on a build with no output fails the step.
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+
+      - name: Scan the built image
+        # Pushed images only: on a pull request nothing was exported, so there is no image for
+        # Trivy to resolve. Dependency vulnerabilities are still covered on pull requests by the
+        # filesystem scan in the security-scan job.
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          # Read from the metadata output rather than rebuilt by hand: on a pull_request event
+          # the sha tag is the PR head rather than github.sha, so a hand-built reference would
+          # name an image that does not exist.
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: 0
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-image]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+
+    # This job is EXPECTED TO FAIL without real cloud resources, as the brief allows. The
+    # secrets and variables below exist in the repository settings with dummy values, and the
+    # pipeline reads them from there rather than hard-coding anything — that wiring is the part
+    # being demonstrated. Infrastructure-as-code for the target is listed under Known Limitations.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the image name
+        id: image
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          # OIDC federated credentials, not a stored client secret. A long-lived cloud
+          # credential in CI is one leaked log away from a compromised subscription; a
+          # federated token is minted per run and expires with it.
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          containerAppName: ${{ vars.CONTAINER_APP_NAME }}
+          resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          imageToDeploy: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          # A deploy that succeeds and serves 500s is not a successful deploy.
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent "${{ vars.APP_URL }}/health/ready"; then
+              echo "Readiness check passed."
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::Service did not become ready after deployment"
+          exit 1

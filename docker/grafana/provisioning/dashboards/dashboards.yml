@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: shopping-list
+    orgId: 1
+    folder: Shopping List
+    type: file
+    disableDeletion: true
+    # Dashboards are owned by the repository, not by whoever last edited them in the UI.
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

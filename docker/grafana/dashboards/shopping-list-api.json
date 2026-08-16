@@ -1,0 +1,345 @@
+{
+  "uid": "shopping-list-api",
+  "title": "Shopping List API",
+  "description": "RED metrics, ranking-experiment comparison, cache and dependency health. Provisioned from the repository — panel queries must match the metric names registered in Telemetry/ApiMetrics.cs.",
+  "tags": ["shopping-list", "api"],
+  "timezone": "browser",
+  "editable": false,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "variant",
+        "label": "Ranking variant",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(shoppinglist_search_duration_seconds_bucket, variant)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Service health (RED)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Request rate",
+      "description": "Requests per second across all endpoints.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"shopping-list-api\"}[1m]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error rate",
+      "description": "Share of requests returning 5xx. The first number to look at when something is wrong.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"shopping-list-api\",http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_request_duration_seconds_count{job=\"shopping-list-api\"}[5m])), 0.001)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cache hit ratio",
+      "description": "Redis cache-aside effectiveness. A ratio near zero after warm-up usually means the cache key varies on something it should not.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.4 },
+              { "color": "green", "value": 0.7 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(shoppinglist_cache_requests_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(shoppinglist_cache_requests_total[5m])), 0.001)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limit rejections",
+      "description": "429s issued per second, by policy.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(shoppinglist_ratelimit_rejections_total[1m]))" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Embedding failures",
+      "description": "Failed calls to Ollama. Non-zero here with a healthy API is the graceful-degradation path working.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(shoppinglist_embedding_failures_total[15m]))" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Items pending embedding",
+      "description": "Backlog on the background embedding channel. Should return to zero shortly after writes stop.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(shoppinglist_embedding_queue_depth)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request latency (p50 / p95 / p99)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "legendFormat": "p50", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"shopping-list-api\"}[5m])))" },
+        { "refId": "B", "legendFormat": "p95", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"shopping-list-api\"}[5m])))" },
+        { "refId": "C", "legendFormat": "p99", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"shopping-list-api\"}[5m])))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by status class",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 20, "stacking": { "mode": "normal" }, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{http_response_status_code}}",
+          "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"shopping-list-api\"}[1m]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Ranking experiment",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Search latency p95 by variant",
+      "description": "Control vs treatment ranking strategy on live traffic. Latency is the cost side of a relevance change.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{variant}} ({{strategy}})",
+          "expr": "histogram_quantile(0.95, sum by (le, variant, strategy) (rate(shoppinglist_search_duration_seconds_bucket{variant=~\"$variant\"}[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Results returned per search by variant",
+      "description": "Median result count. Paired with the zero-result rate, this is the relevance signal a ranking experiment is actually measuring.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{variant}}",
+          "expr": "histogram_quantile(0.50, sum by (le, variant) (rate(shoppinglist_search_results_bucket{variant=~\"$variant\"}[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Zero-result rate by variant",
+      "description": "Share of searches returning nothing. Rising here is the clearest sign a ranking change made things worse.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "max": 1, "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{variant}}",
+          "expr": "sum by (variant) (rate(shoppinglist_search_zero_results_total{variant=~\"$variant\"}[5m])) / clamp_min(sum by (variant) (rate(shoppinglist_search_duration_seconds_count{variant=~\"$variant\"}[5m])), 0.001)"
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Traffic split",
+      "description": "Observed assignment distribution. Should converge on SearchSettings__Experiment__VariantSplit; a persistent skew means the assignment hash is not uniform.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "values": ["percent"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{variant}}",
+          "expr": "sum by (variant) (increase(shoppinglist_experiment_assignments_total[1h]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache hit ratio by variant",
+      "description": "Each variant keeps its own cache namespace. Broadly similar ratios confirm the variant is part of the cache key; a single shared line would mean variants are contaminating each other's results.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 23 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "max": 1, "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{variant}}",
+          "expr": "sum by (variant) (rate(shoppinglist_cache_requests_total{result=\"hit\",variant=~\"$variant\"}[5m])) / clamp_min(sum by (variant) (rate(shoppinglist_cache_requests_total{variant=~\"$variant\"}[5m])), 0.001)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Embedding latency p95",
+      "description": "Time spent in Ollama. Kept off the request path — this is the background worker's latency, not the user's.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 23 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(shoppinglist_embedding_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Logs",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "collapsed": false
+    },
+    {
+      "type": "logs",
+      "title": "Application logs",
+      "description": "Shipped directly from Serilog to Loki. Correlation ID, user id and ranking variant are structured properties on every line.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 31 },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{app=\"shopping-list-api\"}"
+        }
+      ]
+    }
+  ]
+}

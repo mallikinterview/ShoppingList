@@ -1,0 +1,229 @@
+### Shopping List API — full workflow
+###
+### Runnable from Visual Studio, Rider, or VS Code (REST Client extension).
+### Committed to the repository rather than shared as a Postman export, so it is versioned
+### alongside the endpoints it exercises and cannot drift unnoticed.
+###
+### Run top to bottom: the token, item id and image id flow between requests automatically.
+
+@host = http://localhost:5080
+@keycloak = http://localhost:8080
+
+@username = demo
+@password = DemoPassw0rd!
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 1. Signup — creates a user in Keycloak via a scoped service account.
+### The password is forwarded to the identity provider and never stored by this API.
+### Expect 409 if you run this twice.
+### ─────────────────────────────────────────────────────────────────────────────
+POST {{host}}/api/v1/auth/signup
+Content-Type: application/json
+
+{
+  "username": "reviewer",
+  "email": "reviewer@example.com",
+  "firstName": "Alex",
+  "lastName": "Reviewer",
+  "password": "ReviewerPassw0rd!"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 2. Token — OAuth2 Direct Access Grant.
+### DEPRECATED in OAuth 2.1; present so the API can be driven from the command line.
+### Authorization Code + PKCE is enabled on the same client (see request 14).
+### ─────────────────────────────────────────────────────────────────────────────
+# @name token
+POST {{host}}/api/v1/auth/token
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+@accessToken = {{token.response.body.accessToken}}
+@refreshToken = {{token.response.body.refreshToken}}
+
+### 3. Refresh — the realm rotates refresh tokens and rejects reuse.
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 4. Create an item. Embedding is generated asynchronously — the response returns
+### immediately with embeddingStatus "Pending".
+### ─────────────────────────────────────────────────────────────────────────────
+# @name createItem
+POST {{host}}/api/v1/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Organic whole milk",
+  "notes": "2 litre bottle, semi-skimmed is an acceptable substitute",
+  "quantity": 2,
+  "unit": "bottle",
+  "category": "dairy"
+}
+
+@itemId = {{createItem.response.body.id}}
+
+### 5. A few more items, so search has something to rank.
+POST {{host}}/api/v1/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "Washing up liquid", "notes": "lemon scented, for dishes", "quantity": 1, "unit": "bottle", "category": "household" }
+
+###
+POST {{host}}/api/v1/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "Mature cheddar cheese", "notes": "block, not grated", "quantity": 1, "unit": "block", "category": "dairy" }
+
+###
+POST {{host}}/api/v1/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "Wholemeal bread", "notes": "seeded loaf", "quantity": 1, "unit": "loaf", "category": "bakery" }
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 6. Read back. Poll until embeddingStatus is "Ready" before running the semantic
+### search below — until then the vector branch has nothing to match against.
+### ─────────────────────────────────────────────────────────────────────────────
+GET {{host}}/api/v1/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+
+### 7. List with keyset pagination and metadata filters.
+GET {{host}}/api/v1/items?pageSize=10&category=dairy
+Authorization: Bearer {{accessToken}}
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 8. Hybrid search — keyword match. Both branches contribute; check vectorRank
+### and textRank in the response to see which found what.
+### ─────────────────────────────────────────────────────────────────────────────
+POST {{host}}/api/v1/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "query": "milk", "limit": 10 }
+
+### 9. Semantic match — no shared keyword with the item.
+### "dish soap" should surface "Washing up liquid" through the vector branch alone.
+### This is the result an INNER JOIN between the branches would have discarded.
+POST {{host}}/api/v1/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "query": "dish soap", "limit": 10 }
+
+### 10. Hybrid with metadata filters — pushed into both retrieval branches, not
+### applied after fusion.
+POST {{host}}/api/v1/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "query": "cheese", "category": "dairy", "isPurchased": false, "limit": 10 }
+
+### 11. Malformed query. websearch_to_tsquery tolerates this; to_tsquery would
+### raise a syntax error and return 500.
+POST {{host}}/api/v1/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "query": "milk & \"unclosed", "limit": 10 }
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 12. Update. Changing name or notes clears the embedding and re-queues the item,
+### so it cannot keep matching its old description.
+### ─────────────────────────────────────────────────────────────────────────────
+PUT {{host}}/api/v1/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Organic semi-skimmed milk",
+  "notes": "4 pint bottle",
+  "quantity": 1,
+  "unit": "bottle",
+  "category": "dairy",
+  "isPurchased": true
+}
+
+### 13. Image upload. Content type is determined from the file's magic bytes, not
+### the Content-Type header or the extension. Replace the path with a real image.
+POST {{host}}/api/v1/items/{{itemId}}/images
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="photo.png"
+Content-Type: image/png
+
+< ./photo.png
+--boundary--
+
+### ─────────────────────────────────────────────────────────────────────────────
+### 14. Authorization Code + PKCE — the intended production flow.
+### Open in a browser; request 2 exists only for command-line convenience.
+### ─────────────────────────────────────────────────────────────────────────────
+# {{keycloak}}/realms/shopping-list/protocol/openid-connect/auth
+#   ?client_id=shopping-list-api
+#   &response_type=code
+#   &scope=openid profile email
+#   &redirect_uri=http://localhost:5080/
+#   &code_challenge=<S256 challenge>
+#   &code_challenge_method=S256
+
+### ─────────────────────────────────────────────────────────────────────────────
+### Negative cases — these SHOULD fail. Each proves a control is working.
+### ─────────────────────────────────────────────────────────────────────────────
+
+### 15. No token → 401. Proves the fallback authorization policy fails closed.
+GET {{host}}/api/v1/items
+
+### 16. Cross-user access → 404, not 403.
+### Get a token as demo2 (password DemoPassw0rd!) and request demo's item id.
+### 404 rather than 403 is deliberate: 403 would confirm the id exists.
+GET {{host}}/api/v1/items/{{itemId}}
+Authorization: Bearer PASTE_A_DEMO2_TOKEN_HERE
+
+### 17. Validation failure → 400 with per-field errors as problem+json.
+POST {{host}}/api/v1/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "", "quantity": -5 }
+
+### 18. Oversized search query → 400. Bounded because the query is embedded,
+### and an unbounded string is an unbounded inference cost.
+POST {{host}}/api/v1/search
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "query": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+### ─────────────────────────────────────────────────────────────────────────────
+### Operations
+### ─────────────────────────────────────────────────────────────────────────────
+
+### 19. Liveness — checks nothing external, so a dependency outage cannot cause
+### the orchestrator to restart healthy replicas.
+GET {{host}}/health/live
+
+### 20. Readiness — per-dependency detail. Redis and Ollama report Degraded rather
+### than Unhealthy: the API serves without them.
+GET {{host}}/health/ready
+
+### 21. Prometheus metrics.
+GET {{host}}/metrics
+
+### 22. Delete. Removes the item, its image rows, and the stored objects.
+DELETE {{host}}/api/v1/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
