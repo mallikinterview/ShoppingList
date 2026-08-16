@@ -7,7 +7,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)
 ![Keycloak](https://img.shields.io/badge/Auth-Keycloak%2026-4D4D4D)
 ![Tests](https://img.shields.io/badge/tests-130%20passing-brightgreen)
-[![CI/CD](https://github.com/mallikinterview/Shopping-List/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/mallikinterview/Shopping-List/actions/workflows/ci-cd.yml)
+[![CI/CD](https://github.com/mallikinterview/ShoppingList/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/mallikinterview/ShoppingList/actions/workflows/ci-cd.yml)
 
 ---
 
@@ -276,8 +276,8 @@ sudo systemctl restart docker
 ### **1. Clone the repository**
 
 ```bash
-git clone https://github.com/mallikinterview/Shopping-List.git
-cd Shopping-List
+git clone https://github.com/mallikinterview/ShoppingList.git
+cd ShoppingList
 ```
 
 ### **2. Create your `.env` file**
@@ -409,8 +409,8 @@ docker compose down -v        # or wipe data — you will need to sign up again
 ### **1. Clone and configure**
 
 ```bash
-git clone https://github.com/mallikinterview/Shopping-List.git
-cd Shopping-List
+git clone https://github.com/mallikinterview/ShoppingList.git
+cd ShoppingList
 cp .env.example .env
 ```
 
